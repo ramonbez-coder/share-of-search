@@ -6,9 +6,13 @@
   "scripts": {
     "build": "tsc",
     "start": "ts-node src/index.ts",
+    "start:search": "ts-node src/index.ts -- --mode search",
+    "start:llm": "ts-node src/index.ts -- --mode llm",
     "dev": "ts-node src/index.ts",
     "test:dry": "DRY_RUN=true ts-node src/index.ts",
-    "test:month": "ts-node src/index.ts --month 2026-03"
+    "test:search": "DRY_RUN=true ts-node src/index.ts -- --mode search",
+    "test:llm": "DRY_RUN=true ts-node src/index.ts -- --mode llm",
+    "test:month": "ts-node src/index.ts -- --month 2026-03"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.39.0",

@@ -1,9 +1,10 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { BrandVolumeResult } from "./dataforseo";
+import { LlmMentionResult } from "./llm-mentions";
 
-// ─── Table name ───────────────────────────────────────────────────────────────
-// Must match exactly what you created in Supabase (hyphens are valid but need quoting in SQL)
-const TABLE = "brand-share-of-search";
+// ─── Table names ──────────────────────────────────────────────────────────────
+const TABLE_SEARCH = "brand-share-of-search";
+const TABLE_LLM    = "brand-llm-mentions";
 
 // ─── Row type ─────────────────────────────────────────────────────────────────
 interface BrandShareRow {
@@ -68,7 +69,7 @@ export async function storeResults(
     const batch = rows.slice(i, i + batchSize);
 
     const { error } = await supabase
-      .from(TABLE)
+      .from(TABLE_SEARCH)
       .upsert(batch, { onConflict: "brand,country,period" });
 
     if (error) {
@@ -83,6 +84,71 @@ export async function storeResults(
   }
 
   console.log(`✅ Successfully stored ${rows.length} rows`);
+}
+
+// ─── Store LLM mention results ────────────────────────────────────────────────
+
+interface LlmMentionRow {
+  brand: string;
+  country: string;
+  mentions: number;
+  ai_search_volume: number;
+  impressions: number;
+  platform: string;
+  period: string;
+  created_at: string;
+}
+
+/**
+ * Upserts LLM mention results into Supabase.
+ * Uses brand + country + platform + period as the unique key.
+ */
+export async function storeLlmMentions(
+  results: LlmMentionResult[],
+  period: Date,
+  dryRun = false
+): Promise<void> {
+  const periodStr = formatPeriod(period);
+
+  const rows: LlmMentionRow[] = results.map((r) => ({
+    brand: r.brand,
+    country: r.country,
+    mentions: r.mentions,
+    ai_search_volume: r.aiSearchVolume,
+    impressions: r.impressions,
+    platform: r.platform,
+    period: periodStr,
+    created_at: new Date().toISOString(),
+  }));
+
+  if (dryRun) {
+    console.log("\n📋 DRY RUN — LLM mention rows that would be written:");
+    console.table(rows.slice(0, 10));
+    if (rows.length > 10) console.log(`  ... and ${rows.length - 10} more rows`);
+    return;
+  }
+
+  console.log(`\n💾 Writing ${rows.length} LLM mention rows to Supabase (period: ${periodStr})...`);
+
+  const supabase = createSupabaseClient();
+  const batchSize = 50;
+
+  for (let i = 0; i < rows.length; i += batchSize) {
+    const batch = rows.slice(i, i + batchSize);
+
+    const { error } = await supabase
+      .from(TABLE_LLM)
+      .upsert(batch, { onConflict: "brand,country,platform,period" });
+
+    if (error) {
+      throw new Error(
+        `Supabase upsert failed for LLM mentions batch at index ${i}:\n${error.message}\n\n` +
+        "Check that the table 'brand-llm-mentions' exists (run supabase-setup.sql).\n"
+      );
+    }
+  }
+
+  console.log(`✅ Successfully stored ${rows.length} LLM mention rows`);
 }
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
