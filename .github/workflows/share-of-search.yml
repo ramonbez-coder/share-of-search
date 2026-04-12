@@ -1,0 +1,52 @@
+name: Brand Share of Search — Monthly Run
+
+on:
+  # Runs at 07:00 UTC on the 1st of every month
+  schedule:
+    - cron: "0 7 1 * *"
+
+  # Allow manual trigger from the GitHub Actions tab
+  # You can also pass a specific month to backfill: set OVERRIDE_MONTH input
+  workflow_dispatch:
+    inputs:
+      month:
+        description: "Month to process (YYYY-MM). Leave blank for previous month."
+        required: false
+        default: ""
+      dry_run:
+        description: "Dry run? (true/false)"
+        required: false
+        default: "false"
+
+jobs:
+  run:
+    name: Fetch & Store Brand Volumes
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+          cache: "npm"
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run share of search tracker
+        env:
+          DATAFORSEO_LOGIN: ${{ secrets.DATAFORSEO_LOGIN }}
+          DATAFORSEO_PASSWORD: ${{ secrets.DATAFORSEO_PASSWORD }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ secrets.SUPABASE_ANON_KEY }}
+          DRY_RUN: ${{ github.event.inputs.dry_run || 'false' }}
+        run: |
+          if [ -n "${{ github.event.inputs.month }}" ]; then
+            npm run start -- --month ${{ github.event.inputs.month }}
+          else
+            npm run start
+          fi
