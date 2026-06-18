@@ -1,6 +1,7 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
 import { BrandVolumeResult } from "./dataforseo";
 import { LlmMentionResult } from "./llm-mentions";
+import { numericRowIdLlm, numericRowIdShare } from "./record-key";
 
 // ─── Table names ──────────────────────────────────────────────────────────────
 const TABLE_SEARCH = "brand-share-of-search";
@@ -8,6 +9,7 @@ const TABLE_LLM    = "brand-llm-mentions";
 
 // ─── Row type ─────────────────────────────────────────────────────────────────
 interface BrandShareRow {
+  id: number;
   brand: string;
   country: string;
   traffic: number;
@@ -16,22 +18,29 @@ interface BrandShareRow {
 }
 
 // ─── Client factory ───────────────────────────────────────────────────────────
+function supabaseSecretKey(): string | undefined {
+  return process.env.SUPABASE_SERVICE_ROLE_KEY || process.env.SUPABASE_ANON_KEY;
+}
+
 function createSupabaseClient(): SupabaseClient {
-  if (!process.env.SUPABASE_URL || !process.env.SUPABASE_ANON_KEY) {
+  const key = supabaseSecretKey();
+
+  if (!process.env.SUPABASE_URL || !key) {
     throw new Error(
-      "Missing SUPABASE_URL or SUPABASE_ANON_KEY in environment variables.\n" +
-      "Copy .env.example to .env and fill in your Supabase credentials."
+      "Missing Supabase credentials.\n" +
+      "Set SUPABASE_URL plus either SUPABASE_ANON_KEY (with RLS policies that allow your writes)\n" +
+      "or SUPABASE_SERVICE_ROLE_KEY for server-side workflows (recommended for CI / GitHub Actions)."
     );
   }
 
-  return createClient(process.env.SUPABASE_URL, process.env.SUPABASE_ANON_KEY);
+  return createClient(process.env.SUPABASE_URL, key);
 }
 
 // ─── Store results ────────────────────────────────────────────────────────────
 
 /**
  * Upserts brand volume results into Supabase.
- * Uses brand + country + period as the unique key to prevent duplicates.
+ * Uses deterministic numeric `id` (see `numericRowIdShare` in `record-key.ts`).
  *
  * @param results   - Array of brand/country/volume results from DataForSEO
  * @param period    - The month this data represents (e.g. new Date(2026, 2, 1))
@@ -46,6 +55,7 @@ export async function storeResults(
   const periodStr = formatPeriod(period);
 
   const rows: BrandShareRow[] = results.map((r) => ({
+    id: numericRowIdShare(r.country, period, r.brand),
     brand: r.brand,
     country: r.country,
     traffic: r.totalVolume,
@@ -70,15 +80,15 @@ export async function storeResults(
 
     const { error } = await supabase
       .from(TABLE_SEARCH)
-      .upsert(batch, { onConflict: "brand,country,period" });
+      .upsert(batch);
 
     if (error) {
       throw new Error(
         `Supabase upsert failed for batch starting at index ${i}:\n${error.message}\n\n` +
         "Check that:\n" +
-        "  1. Your SUPABASE_ANON_KEY has INSERT permissions\n" +
-        "  2. The table 'brand-share-of-search' exists with the correct schema\n" +
-        "  3. The unique index on (brand, country, period) exists\n"
+        "  1. Your Supabase key has INSERT permissions\n" +
+        "  2. The table 'brand-share-of-search' exists with BIGINT PRIMARY KEY `id` (numeric composite id).\n" +
+        "  3. Auxiliary unique index on (brand, country, period) matches supabase-setup.sql\n"
       );
     }
   }
@@ -89,6 +99,7 @@ export async function storeResults(
 // ─── Store LLM mention results ────────────────────────────────────────────────
 
 interface LlmMentionRow {
+  id: number;
   brand: string;
   country: string;
   mentions: number;
@@ -101,7 +112,7 @@ interface LlmMentionRow {
 
 /**
  * Upserts LLM mention results into Supabase.
- * Uses brand + country + platform + period as the unique key.
+ * Uses deterministic numeric `id` with platform suffix (`numericRowIdLlm`).
  */
 export async function storeLlmMentions(
   results: LlmMentionResult[],
@@ -111,6 +122,7 @@ export async function storeLlmMentions(
   const periodStr = formatPeriod(period);
 
   const rows: LlmMentionRow[] = results.map((r) => ({
+    id: numericRowIdLlm(r.country, period, r.brand, r.platform),
     brand: r.brand,
     country: r.country,
     mentions: r.mentions,
@@ -138,7 +150,7 @@ export async function storeLlmMentions(
 
     const { error } = await supabase
       .from(TABLE_LLM)
-      .upsert(batch, { onConflict: "brand,country,platform,period" });
+      .upsert(batch);
 
     if (error) {
       throw new Error(
