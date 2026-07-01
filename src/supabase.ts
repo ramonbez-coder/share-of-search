@@ -4,8 +4,8 @@ import { LlmMentionResult } from "./llm-mentions";
 import { numericRowIdLlm, numericRowIdShare } from "./record-key";
 
 // ─── Table names ──────────────────────────────────────────────────────────────
-const TABLE_SEARCH = "brand-share-of-search";
-const TABLE_LLM    = "brand-llm-mentions";
+const TABLE_SEARCH = "brand_share_of_search";
+const TABLE_LLM    = "brand_llm_mentions";
 
 // ─── Row type ─────────────────────────────────────────────────────────────────
 interface BrandShareRow {
